@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoreo de Reportes</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Monitoreo de Reportes</h1>
+    <p>Esperando nuevos registros...</p>
+    <button id="enableNotifications">Habilitar notificaciones</button>
+
+    <script>
+        let lastReportNumber = null;
+        const broadcastChannel = new BroadcastChannel('reportChannel');
+        let checkInterval;
+
+        function requestNotificationPermission() {
+            Notification.requestPermission().then(function(permission) {
+                if (permission === "granted") {
+                    console.log("Notificaciones habilitadas");
+                    document.getElementById('enableNotifications').style.display = 'none';
+                    startChecking();
+                }
+            });
+        }
+
+        document.getElementById('enableNotifications').addEventListener('click', requestNotificationPermission);
+
+        function checkForNewNumber() {
+            fetch('/get-last-report')
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.numero) {
+                        if (lastReportNumber === null) {
+                            lastReportNumber = data.numero;
+                        } else if (data.numero > lastReportNumber) {
+                            showNotification(data);
+                            lastReportNumber = data.numero;
+                            broadcastChannel.postMessage({
+                                type: 'newReport',
+                                data: data
+                            });
+                        }
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function showNotification(data) {
+            if (Notification.permission === "granted") {
+                const notification = new Notification("Nuevo Reporte", {
+                    body: `Zona: ${data.zona}\nHora: ${data.hora}\nObservaciones: ${data.observaciones}`,
+                    icon: "/path/to/your/icon.png" // Reemplaza esto con la ruta a tu icono
+                });
+
+                // Cerrar la notificación al hacer clic
+                notification.onclick = function() {
+                    this.close();
+                };
+            }
+        }
+
+        broadcastChannel.onmessage = (event) => {
+            if (event.data.type === 'newReport' && event.data.data.numero > lastReportNumber) {
+                showNotification(event.data.data);
+                lastReportNumber = event.data.data.numero;
+            }
+        };
+
+        function startChecking() {
+            // Comprobación inicial
+            checkForNewNumber();
+
+            // Iniciar comprobación periódica más rápida
+            checkInterval = setInterval(checkForNewNumber, 100); // Comprueba cada x  ms
+        }
+
+        // Verificar el permiso de notificaciones al cargar la página
+        if (Notification.permission === "granted") {
+            document.getElementById('enableNotifications').style.display = 'none';
+            startChecking();
+        }
+
+        // Optimización: detener las comprobaciones cuando la pestaña no está visible
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                clearInterval(checkInterval);
+            } else {
+                startChecking();
+            }
+        });
+
+        // Iniciar las comprobaciones si ya se tienen los permisos
+        if (Notification.permission === "granted") {
+            startChecking();
+        }
+    </script>
+</body>
+</html>
